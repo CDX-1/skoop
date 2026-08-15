@@ -11,9 +11,15 @@ repositories {
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.21.6-R0.1-SNAPSHOT")
+
+    // SKRIPT
     compileOnly("com.github.SkriptLang:Skript:2.16.0") {
         isTransitive = false
     }
+
+    // LOMBOK
+    compileOnly("org.projectlombok:lombok:1.18.46")
+    annotationProcessor("org.projectlombok:lombok:1.18.46")
 }
 
 java {

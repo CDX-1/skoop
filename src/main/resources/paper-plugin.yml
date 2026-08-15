@@ -1,0 +1,9 @@
+name: skoop
+version: '${version}'
+
+main: rip.cdx.skoop.Skoop
+api-version: '1.21.6'
+load: STARTUP
+dependencies: Skript
+
+authors: [ CDX ]

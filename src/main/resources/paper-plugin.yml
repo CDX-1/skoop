@@ -3,7 +3,11 @@ version: '${version}'
 
 main: rip.cdx.skoop.Skoop
 api-version: '1.21.6'
-load: STARTUP
-dependencies: Skript
+load: POSTWORLD
+dependencies:
+  server:
+    Skript:
+      load: BEFORE
+      required: false
 
 authors: [ CDX ]

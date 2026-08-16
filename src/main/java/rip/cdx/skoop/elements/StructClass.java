@@ -7,6 +7,9 @@ import ch.njol.skript.config.SectionNode;
 import ch.njol.skript.config.SimpleNode;
 import ch.njol.skript.lang.Literal;
 import ch.njol.skript.lang.SkriptParser;
+import ch.njol.skript.lang.Trigger;
+import ch.njol.skript.lang.TriggerItem;
+import ch.njol.skript.lang.parser.ParserInstance;
 import ch.njol.skript.registrations.Classes;
 import ch.njol.skript.util.Utils;
 import com.github.shanebeee.skr.Registration;
@@ -14,12 +17,14 @@ import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.UnknownNullability;
 import org.skriptlang.skript.lang.entry.EntryContainer;
+import org.skriptlang.skript.lang.script.Script;
 import org.skriptlang.skript.lang.structure.Structure;
 import rip.cdx.skoop.Skoop;
 import rip.cdx.skoop.core.api.SkoopClass;
 import rip.cdx.skoop.core.api.SkoopConstructor;
 import rip.cdx.skoop.core.api.SkoopField;
 import rip.cdx.skoop.core.api.SkoopParameter;
+import rip.cdx.skoop.elements.events.SkoopConstructorEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -152,17 +157,29 @@ public class StructClass extends Structure {
             }
         }
 
-        SkoopConstructor constructor = new SkoopConstructor(parameters, node);
+        ParserInstance parser = ParserInstance.get();
+        ParserInstance.Backup backup = parser.backup();
+
+        ArrayList<TriggerItem> items;
+
+        try {
+            parser.setCurrentEvent("skoop constructor", SkoopConstructorEvent.class);
+            items = ScriptLoader.loadItems(node);
+        } finally {
+            parser.restoreBackup(backup);
+        }
+
+        Script script = parser.getCurrentScript();
+        Trigger trigger = new Trigger(script, "constructor " + className, new EvtConstructor(), items);
+
+        SkoopConstructor constructor = new SkoopConstructor(parameters, trigger);
 
         if (skoopClass.hasConstructor(constructor)) {
-            Skript.error("Duplicate constructor in class '" + className + "' with the same signature.");
+            Skript.error("Duplicate constructor " + constructor.getSignature() + " in class '" + className + "'");
             return false;
         }
 
         skoopClass.addConstructor(constructor);
-        Skoop.getInstance().getLogger().info(
-                "Registered constructor " + constructor.getSignature() + " for class " + className
-        );
         return true;
     }
 

@@ -2,6 +2,7 @@ package rip.cdx.skoop.core.api;
 
 import lombok.Getter;
 
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,9 +30,19 @@ public class SkoopClass {
         constructors.add(constructor);
     }
 
-
     public boolean hasConstructor(SkoopConstructor constructor) {
         return constructors.stream()
                 .anyMatch(existing -> existing.hasSameSignature(constructor));
+    }
+
+    @Nullable
+    public SkoopConstructor findConstructor(Object[] arguments) {
+        for (SkoopConstructor constructor : constructors) {
+            if (constructor.matches(arguments)) {
+                return constructor;
+            }
+        }
+
+        return null;
     }
 }

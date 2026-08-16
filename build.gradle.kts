@@ -1,12 +1,14 @@
 plugins {
     id("java-library")
     id("xyz.jpenilla.run-paper") version "3.1.0"
+    id("com.gradleup.shadow") version "9.6.1"
 }
 
 repositories {
     mavenCentral()
     maven("https://repo.papermc.io/repository/maven-public/")
     maven("https://repo.skriptlang.org/releases")
+    maven("https://jitpack.io")
 }
 
 dependencies {
@@ -16,6 +18,9 @@ dependencies {
     compileOnly("com.github.SkriptLang:Skript:2.16.0") {
         isTransitive = false
     }
+
+    // SKR BY SHANEBEE
+    implementation("com.github.ShaneBeee:SkriptRegistration:1.5.0")
 
     // LOMBOK
     compileOnly("org.projectlombok:lombok:1.18.46")
@@ -37,5 +42,9 @@ tasks {
         filesMatching("paper-plugin.yml") {
             expand(props)
         }
+    }
+
+    shadowJar {
+        relocate("com.github.shanebeee.skr", "rip.cdx.skoop.skr")
     }
 }

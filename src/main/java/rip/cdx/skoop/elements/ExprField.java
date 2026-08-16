@@ -11,15 +11,19 @@ import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
 import rip.cdx.skoop.core.api.SkoopField;
 import rip.cdx.skoop.core.api.SkoopObject;
+import rip.cdx.skoop.core.api.SkoopType;
+import rip.cdx.skoop.core.SkoopTypeProvider;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
-public class ExprField extends SimpleExpression<Object> {
+public class ExprField extends SimpleExpression<Object> implements SkoopTypeProvider {
 
-    private Expression<SkoopObject> objects;
+    private Expression<?> objects;
     private String fieldName;
+
+    private @Nullable SkoopType fieldType;
 
     public static void register(Registration reg) {
         reg.newSimpleExpression(
@@ -34,25 +38,40 @@ public class ExprField extends SimpleExpression<Object> {
     }
 
     @Override
-    @SuppressWarnings("unchecked")
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
-        this.objects = (Expression<SkoopObject>) expressions[0];
+        this.objects = expressions[0];
         this.fieldName = parseResult.regexes.getFirst().group(1);
+
+        if (objects instanceof SkoopTypeProvider provider) {
+            SkoopType ownerType = provider.getSkoopType();
+
+            if (ownerType != null && ownerType.isSkoopType()) {
+                SkoopField field = ownerType.getSkoopClass().getField(fieldName);
+
+                if (field != null) {
+                    this.fieldType = field.getType();
+                }
+            }
+        }
 
         return true;
     }
 
     @Override
     protected Object @Nullable [] get(Event event) {
-        SkoopObject[] objects = this.objects.getArray(event);
+        Object[] receivers = objects.getArray(event);
 
-        if (objects.length == 0) {
+        if (receivers.length == 0) {
             return null;
         }
 
         List<Object> results = new ArrayList<>();
 
-        for (SkoopObject object : objects) {
+        for (Object receiver : receivers) {
+            if (!(receiver instanceof SkoopObject object)) {
+                continue;
+            }
+
             SkoopField field = object.getSkoopClass().getField(fieldName);
 
             if (field == null) {
@@ -90,18 +109,20 @@ public class ExprField extends SimpleExpression<Object> {
 
     @Override
     public void change(Event event, Object @Nullable [] delta, Changer.ChangeMode mode) {
-        SkoopObject[] objects = this.objects.getArray(event);
+        Object[] receivers = objects.getArray(event);
 
-        if (objects.length == 0) {
+        if (receivers.length == 0) {
             return;
         }
 
-        if (objects.length != 1) {
+        if (receivers.length != 1) {
             Skript.error("A Skoop field can only be changed on one object at a time.");
             return;
         }
 
-        SkoopObject object = objects[0];
+        if (!(receivers[0] instanceof SkoopObject object)) {
+            return;
+        }
 
         SkoopField field = object.getSkoopClass().getField(fieldName);
 
@@ -181,12 +202,29 @@ public class ExprField extends SimpleExpression<Object> {
 
     @Override
     public boolean isSingle() {
+        if (fieldType != null) {
+            return !fieldType.isPlural();
+        }
+
         return false;
     }
 
     @Override
     public Class<?> getReturnType() {
-        return Object.class;
+        if (fieldType == null) {
+            return Object.class;
+        }
+
+        if (fieldType.isSkoopType()) {
+            return SkoopObject.class;
+        }
+
+        return fieldType.getSkriptType().getC();
+    }
+
+    @Override
+    public @Nullable SkoopType getSkoopType() {
+        return fieldType;
     }
 
     @Override

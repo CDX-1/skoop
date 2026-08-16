@@ -62,17 +62,32 @@ public class ExprNew extends SimpleExpression<SkoopObject> {
             return null;
         }
 
-        Object[] values = arguments == null ? new Object[0] : arguments.getArray(event);
-
-        SkoopConstructor constructor = skoopClass.findConstructor(values);
-
-        if (constructor == null) {
-            return null;
-        }
+        Object[] values = arguments == null
+                ? new Object[0]
+                : arguments.getArray(event);
 
         SkoopObject object = new SkoopObject(skoopClass);
 
-        SkoopConstructorEvent constructorEvent = new SkoopConstructorEvent(object, constructor, values);
+        object.initializeDefaults(event);
+
+        SkoopConstructor constructor = skoopClass.findConstructor(values);
+
+        // Implicit zero-argument constructor.
+        if (constructor == null) {
+            if (values.length == 0 && skoopClass.getConstructors().isEmpty()) {
+                return new SkoopObject[]{object};
+            }
+
+            Skript.error("No matching constructor found for class '" + className + "'");
+            return null;
+        }
+
+        SkoopConstructorEvent constructorEvent = new SkoopConstructorEvent(
+                object,
+                constructor,
+                values
+        );
+
         constructor.getTrigger().execute(constructorEvent);
 
         return new SkoopObject[]{object};

@@ -9,11 +9,16 @@ import ch.njol.util.Kleenean;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
+import rip.cdx.skoop.core.SkoopMethodContext;
+import rip.cdx.skoop.core.api.SkoopParameter;
+import rip.cdx.skoop.core.api.SkoopType;
+import rip.cdx.skoop.core.SkoopTypeProvider;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
-public class ExprMethodArgument extends SimpleExpression<Object> {
+public class ExprMethodArgument extends SimpleExpression<Object> implements SkoopTypeProvider {
 
     private String argumentName;
+    private SkoopType type;
 
     public static void register(Registration reg) {
         reg.newSimpleExpression(
@@ -36,6 +41,15 @@ public class ExprMethodArgument extends SimpleExpression<Object> {
 
         this.argumentName = parseResult.regexes.getFirst().group(1);
 
+        SkoopParameter parameter = SkoopMethodContext.getParameter(argumentName);
+
+        if (parameter == null) {
+            Skript.error("Unknown method argument '" + argumentName + "'");
+            return false;
+        }
+
+        this.type = parameter.type();
+
         return true;
     }
 
@@ -56,12 +70,21 @@ public class ExprMethodArgument extends SimpleExpression<Object> {
 
     @Override
     public boolean isSingle() {
-        return true;
+        return !type.isPlural();
     }
 
     @Override
     public Class<?> getReturnType() {
-        return Object.class;
+        if (type.isSkoopType()) {
+            return rip.cdx.skoop.core.api.SkoopObject.class;
+        }
+
+        return type.getSkriptType().getC();
+    }
+
+    @Override
+    public @Nullable SkoopType getSkoopType() {
+        return type;
     }
 
     @Override

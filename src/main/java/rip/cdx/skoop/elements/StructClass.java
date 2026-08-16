@@ -5,10 +5,7 @@ import ch.njol.skript.Skript;
 import ch.njol.skript.config.Node;
 import ch.njol.skript.config.SectionNode;
 import ch.njol.skript.config.SimpleNode;
-import ch.njol.skript.lang.Literal;
-import ch.njol.skript.lang.SkriptParser;
-import ch.njol.skript.lang.Trigger;
-import ch.njol.skript.lang.TriggerItem;
+import ch.njol.skript.lang.*;
 import ch.njol.skript.lang.parser.ParserInstance;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
@@ -18,6 +15,7 @@ import org.skriptlang.skript.lang.entry.EntryContainer;
 import org.skriptlang.skript.lang.script.Script;
 import org.skriptlang.skript.lang.structure.Structure;
 import rip.cdx.skoop.Skoop;
+import rip.cdx.skoop.core.SkoopMethodContext;
 import rip.cdx.skoop.core.api.*;
 import rip.cdx.skoop.core.events.SkoopConstructorEvent;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
@@ -30,7 +28,9 @@ import java.util.regex.Pattern;
 
 public class StructClass extends Structure {
 
-    private static final Pattern FIELD_PATTERN = Pattern.compile("(?<name>[A-Za-z_][A-Za-z0-9_]*): (?<type>[\\w ]+)");
+    private static final Pattern FIELD_PATTERN = Pattern.compile(
+            "^(?<name>[A-Za-z_][A-Za-z0-9_]*):\\s*(?<type>[\\w\\[\\] ]+?)(?:\\s*=\\s*(?<default>.+))?$"
+    );
     private static final Pattern CONSTRUCTOR_PATTERN = Pattern.compile(
             "^constructor\\s*\\((?<args>.*)\\)$",
             Pattern.CASE_INSENSITIVE
@@ -132,12 +132,13 @@ public class StructClass extends Structure {
         Matcher matcher = FIELD_PATTERN.matcher(line);
 
         if (!matcher.matches()) {
-            Skript.error("Invalid class field '" + line + "'. Expected: <name>: <type>");
+            Skript.error("Invalid class field '" + line + "'. Expected: <name>: <type> [= <default>]");
             return false;
         }
 
         String fieldName = matcher.group("name").toLowerCase(Locale.ENGLISH);
         String typeName = matcher.group("type").trim();
+        String defaultInput = matcher.group("default");
 
         if (isReserved(fieldName)) {
             Skript.error("'" + fieldName + "' is a reserved class keyword.");
@@ -156,7 +157,26 @@ public class StructClass extends Structure {
             return false;
         }
 
-        skoopClass.addField(new SkoopField(fieldName, type));
+        Expression<?> defaultValue = null;
+
+        if (defaultInput != null && !defaultInput.isBlank()) {
+            defaultValue = new SkriptParser(defaultInput, SkriptParser.ALL_FLAGS, ParseContext.DEFAULT)
+                    .parseExpression(Object.class);
+
+            if (defaultValue == null) {
+                Skript.error("Could not parse default value '" + defaultInput + "' for field '" + fieldName + "'");
+                return false;
+            }
+
+            defaultValue = defaultValue.getConvertedExpression(Object.class);
+
+            if (defaultValue == null) {
+                Skript.error("Could not convert default value for field '" + fieldName + "'");
+                return false;
+            }
+        }
+
+        skoopClass.addField(new SkoopField(fieldName, type, defaultValue));
         return true;
     }
 
@@ -241,8 +261,12 @@ public class StructClass extends Structure {
 
         try {
             parser.setCurrentEvent("skoop method", SkoopMethodEvent.class);
+
+            SkoopMethodContext.setParameters(parameters);
+
             items = ScriptLoader.loadItems(node);
         } finally {
+            SkoopMethodContext.clear();
             parser.restoreBackup(backup);
         }
 

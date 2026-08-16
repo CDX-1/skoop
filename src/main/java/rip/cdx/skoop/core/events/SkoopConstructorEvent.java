@@ -1,53 +1,18 @@
 package rip.cdx.skoop.core.events;
 
-import lombok.Getter;
-import lombok.RequiredArgsConstructor;
-import org.bukkit.event.Event;
-import org.bukkit.event.HandlerList;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
-import rip.cdx.skoop.core.api.SkoopConstructor;
-import rip.cdx.skoop.core.api.SkoopObject;
-import rip.cdx.skoop.core.api.SkoopParameter;
+import rip.cdx.skoop.api.SkoopConstructor;
+import rip.cdx.skoop.api.SkoopObject;
 
-import java.util.List;
+/**
+ * Runs the body of a {@link SkoopConstructor} against a freshly created instance.
+ */
+public class SkoopConstructorEvent extends SkoopInvocationEvent {
 
-@Getter
-@RequiredArgsConstructor
-public class SkoopConstructorEvent extends Event {
-
-    private static final HandlerList HANDLERS = new HandlerList();
-
-    private final SkoopObject object;
-    private final SkoopConstructor constructor;
-    private final Object[] arguments;
-
-    public @Nullable Object getArgument(String name) {
-        List<SkoopParameter> parameters = constructor.getParameters();
-
-        for (int i = 0; i < parameters.size(); i++) {
-            if (parameters.get(i).name().equalsIgnoreCase(name)) {
-                return arguments[i];
-            }
-        }
-
-        return null;
+    public SkoopConstructorEvent(SkoopObject object, SkoopConstructor constructor, Object[] arguments) {
+        super(object, constructor, arguments);
     }
 
-    public @Nullable Object getArgument(int index) {
-        if (index < 0 || index >= arguments.length) {
-            return null;
-        }
-
-        return arguments[index];
-    }
-
-    @Override
-    public @NotNull HandlerList getHandlers() {
-        return HANDLERS;
-    }
-
-    public static @NotNull HandlerList getHandlerList() {
-        return HANDLERS;
+    public SkoopConstructor getConstructor() {
+        return (SkoopConstructor) getExecutable();
     }
 }

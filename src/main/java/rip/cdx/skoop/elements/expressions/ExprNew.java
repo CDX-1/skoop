@@ -1,4 +1,4 @@
-package rip.cdx.skoop.elements;
+package rip.cdx.skoop.elements.expressions;
 
 import ch.njol.skript.Skript;
 import ch.njol.skript.lang.Expression;
@@ -9,15 +9,18 @@ import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
 import rip.cdx.skoop.Skoop;
-import rip.cdx.skoop.core.api.SkoopClass;
-import rip.cdx.skoop.core.api.SkoopConstructor;
-import rip.cdx.skoop.core.api.SkoopObject;
+import rip.cdx.skoop.api.SkoopClass;
+import rip.cdx.skoop.api.SkoopConstructor;
+import rip.cdx.skoop.api.SkoopObject;
+import rip.cdx.skoop.api.SkoopType;
+import rip.cdx.skoop.core.SkoopTypeProvider;
 import rip.cdx.skoop.core.events.SkoopConstructorEvent;
 
-public class ExprNew extends SimpleExpression<SkoopObject> {
+public class ExprNew extends SimpleExpression<SkoopObject> implements SkoopTypeProvider {
 
     private String className;
-    private Expression<?> arguments;
+    private @Nullable Expression<?> arguments;
+    private @Nullable SkoopType type;
 
     public static void register(Registration reg) {
         reg.newSimpleExpression(
@@ -27,26 +30,29 @@ public class ExprNew extends SimpleExpression<SkoopObject> {
                         "new <([A-Za-z_][A-Za-z0-9_]*)> with %objects%"
                 )
                 .name("Skoop New Object")
-                .description("Creates a new Skoop object")
+                .description("Creates a new instance of a Skoop class, running its matching constructor.")
+                .examples("set {_dog} to new Dog with \"Rex\" and 3")
                 .since("1.0.0")
                 .register();
     }
 
     @Override
-    @SuppressWarnings("unchecked")
-    public boolean init(
-            Expression<?>[] expressions,
-            int matchedPattern,
-            Kleenean isDelayed,
-            SkriptParser.ParseResult parseResult
-    ) {
+    public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
         this.className = parseResult.regexes.getFirst().group(1);
+
+        SkoopClass skoopClass = Skoop.getInstance().getClassRegistry().get(className);
+        if (skoopClass == null) {
+            Skript.error("There is no Skoop class named '" + className + "'.");
+            return false;
+        }
+
+        this.type = new SkoopType(skoopClass.getName(), null, skoopClass, false);
 
         if (matchedPattern == 1) {
             this.arguments = expressions[0].getConvertedExpression(Object.class);
 
             if (this.arguments == null) {
-                Skript.error("Could not parse constructor arguments for class '" + className + "'");
+                Skript.error("Could not parse constructor arguments for class '" + className + "'.");
                 return false;
             }
         }
@@ -57,38 +63,28 @@ public class ExprNew extends SimpleExpression<SkoopObject> {
     @Override
     protected SkoopObject @Nullable [] get(Event event) {
         SkoopClass skoopClass = Skoop.getInstance().getClassRegistry().get(className);
-
         if (skoopClass == null) {
+            error("There is no Skoop class named '" + className + "'.");
             return null;
         }
 
-        Object[] values = arguments == null
-                ? new Object[0]
-                : arguments.getArray(event);
+        Object[] values = arguments == null ? new Object[0] : arguments.getArray(event);
 
         SkoopObject object = new SkoopObject(skoopClass);
-
         object.initializeDefaults(event);
 
         SkoopConstructor constructor = skoopClass.findConstructor(values);
-
-        // Implicit zero-argument constructor.
         if (constructor == null) {
+            // A class without declared constructors gets an implicit no-argument one.
             if (values.length == 0 && skoopClass.getConstructors().isEmpty()) {
                 return new SkoopObject[]{object};
             }
 
-            Skript.error("No matching constructor found for class '" + className + "'");
+            error("No constructor of class '" + className + "' accepts the given arguments.");
             return null;
         }
 
-        SkoopConstructorEvent constructorEvent = new SkoopConstructorEvent(
-                object,
-                constructor,
-                values
-        );
-
-        constructor.getTrigger().execute(constructorEvent);
+        constructor.getTrigger().execute(new SkoopConstructorEvent(object, constructor, values));
 
         return new SkoopObject[]{object};
     }
@@ -104,12 +100,16 @@ public class ExprNew extends SimpleExpression<SkoopObject> {
     }
 
     @Override
+    public @Nullable SkoopType getSkoopType() {
+        return type;
+    }
+
+    @Override
     public String toString(@Nullable Event event, boolean debug) {
         if (arguments == null) {
             return "new " + className;
         }
 
-        return "new " + className + " with " +
-                arguments.toString(event, debug);
+        return "new " + className + " with " + arguments.toString(event, debug);
     }
 }

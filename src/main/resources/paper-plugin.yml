@@ -8,6 +8,6 @@ dependencies:
   server:
     Skript:
       load: BEFORE
-      required: false
+      required: true
 
 authors: [ CDX ]

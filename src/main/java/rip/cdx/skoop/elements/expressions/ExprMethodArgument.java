@@ -1,4 +1,4 @@
-package rip.cdx.skoop.elements;
+package rip.cdx.skoop.elements.expressions;
 
 import ch.njol.skript.Skript;
 import ch.njol.skript.lang.Expression;
@@ -9,9 +9,9 @@ import ch.njol.util.Kleenean;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
-import rip.cdx.skoop.core.SkoopMethodContext;
-import rip.cdx.skoop.core.api.SkoopParameter;
-import rip.cdx.skoop.core.api.SkoopType;
+import rip.cdx.skoop.api.SkoopParameter;
+import rip.cdx.skoop.api.SkoopType;
+import rip.cdx.skoop.core.SkoopParseContext;
 import rip.cdx.skoop.core.SkoopTypeProvider;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
@@ -24,10 +24,11 @@ public class ExprMethodArgument extends SimpleExpression<Object> implements Skoo
         reg.newSimpleExpression(
                         ExprMethodArgument.class,
                         Object.class,
-                        "method arg[ument] <([A-Za-z_][A-Za-z0-9_]*)>"
+                        "[the] method arg[ument] <([A-Za-z_][A-Za-z0-9_]*)>"
                 )
                 .name("Skoop Method Argument")
-                .description("Gets an argument passed to the current Skoop method")
+                .description("An argument passed to the method currently running.")
+                .examples("send method argument message to player")
                 .since("1.0.0")
                 .register();
     }
@@ -41,10 +42,9 @@ public class ExprMethodArgument extends SimpleExpression<Object> implements Skoo
 
         this.argumentName = parseResult.regexes.getFirst().group(1);
 
-        SkoopParameter parameter = SkoopMethodContext.getParameter(argumentName);
-
+        SkoopParameter parameter = SkoopParseContext.getParameter(argumentName);
         if (parameter == null) {
-            Skript.error("Unknown method argument '" + argumentName + "'");
+            Skript.error("This method has no argument named '" + argumentName + "'.");
             return false;
         }
 
@@ -60,12 +60,11 @@ public class ExprMethodArgument extends SimpleExpression<Object> implements Skoo
         }
 
         Object value = methodEvent.getArgument(argumentName);
-
         if (value == null) {
             return null;
         }
 
-        return new Object[]{value};
+        return value instanceof Object[] values ? values : new Object[]{value};
     }
 
     @Override
@@ -75,11 +74,7 @@ public class ExprMethodArgument extends SimpleExpression<Object> implements Skoo
 
     @Override
     public Class<?> getReturnType() {
-        if (type.isSkoopType()) {
-            return rip.cdx.skoop.core.api.SkoopObject.class;
-        }
-
-        return type.getSkriptType().getC();
+        return type.getValueClass();
     }
 
     @Override

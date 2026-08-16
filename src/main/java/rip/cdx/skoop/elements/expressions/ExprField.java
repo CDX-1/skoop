@@ -1,6 +1,5 @@
-package rip.cdx.skoop.elements;
+package rip.cdx.skoop.elements.expressions;
 
-import ch.njol.skript.Skript;
 import ch.njol.skript.classes.Changer;
 import ch.njol.skript.lang.Expression;
 import ch.njol.skript.lang.SkriptParser;
@@ -9,9 +8,10 @@ import ch.njol.util.Kleenean;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
-import rip.cdx.skoop.core.api.SkoopField;
-import rip.cdx.skoop.core.api.SkoopObject;
-import rip.cdx.skoop.core.api.SkoopType;
+import rip.cdx.skoop.api.SkoopClass;
+import rip.cdx.skoop.api.SkoopField;
+import rip.cdx.skoop.api.SkoopObject;
+import rip.cdx.skoop.api.SkoopType;
 import rip.cdx.skoop.core.SkoopTypeProvider;
 
 import java.util.ArrayList;
@@ -22,7 +22,6 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
 
     private Expression<?> objects;
     private String fieldName;
-
     private @Nullable SkoopType fieldType;
 
     public static void register(Registration reg) {
@@ -32,7 +31,8 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
                         "%skoopobjects%.<([A-Za-z_][A-Za-z0-9_]*)>"
                 )
                 .name("Skoop Field")
-                .description("Gets or changes a field on a Skoop object")
+                .description("Gets or changes a field on a Skoop object.")
+                .examples("set {_dog}.name to \"Rex\"", "send {_dog}.name")
                 .since("1.0.0")
                 .register();
     }
@@ -41,26 +41,37 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
         this.objects = expressions[0];
         this.fieldName = parseResult.regexes.getFirst().group(1);
-
-        if (objects instanceof SkoopTypeProvider provider) {
-            SkoopType ownerType = provider.getSkoopType();
-
-            if (ownerType != null && ownerType.isSkoopType()) {
-                SkoopField field = ownerType.getSkoopClass().getField(fieldName);
-
-                if (field != null) {
-                    this.fieldType = field.getType();
-                }
-            }
-        }
+        this.fieldType = resolveFieldType();
 
         return true;
+    }
+
+    /**
+     * Resolves the declared field type when the owning expression's class is known at parse time.
+     * Without it the field is treated as a single {@code object}.
+     */
+    private @Nullable SkoopType resolveFieldType() {
+        if (!(objects instanceof SkoopTypeProvider provider)) {
+            return null;
+        }
+
+        SkoopType ownerType = provider.getSkoopType();
+        if (ownerType == null || !ownerType.isSkoopType()) {
+            return null;
+        }
+
+        SkoopClass ownerClass = ownerType.getSkoopClass();
+        SkoopField field = ownerClass.getField(fieldName);
+        if (field == null) {
+            return null;
+        }
+
+        return field.getType();
     }
 
     @Override
     protected Object @Nullable [] get(Event event) {
         Object[] receivers = objects.getArray(event);
-
         if (receivers.length == 0) {
             return null;
         }
@@ -73,13 +84,11 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
             }
 
             SkoopField field = object.getSkoopClass().getField(fieldName);
-
             if (field == null) {
                 continue;
             }
 
             Object value = object.getField(field);
-
             if (value == null) {
                 continue;
             }
@@ -91,18 +100,14 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
             }
         }
 
-        if (results.isEmpty()) {
-            return null;
-        }
-
-        return results.toArray();
+        return results.isEmpty() ? null : results.toArray();
     }
 
     @Override
     public Class<?> @Nullable [] acceptChange(Changer.ChangeMode mode) {
         return switch (mode) {
-            case SET -> new Class[]{Object.class, Object[].class};
-            case DELETE -> new Class[]{Object.class};
+            case SET -> new Class[]{Object[].class};
+            case DELETE, RESET -> new Class[0];
             default -> null;
         };
     }
@@ -110,42 +115,38 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
     @Override
     public void change(Event event, Object @Nullable [] delta, Changer.ChangeMode mode) {
         Object[] receivers = objects.getArray(event);
-
         if (receivers.length == 0) {
             return;
         }
 
-        if (receivers.length != 1) {
-            Skript.error("A Skoop field can only be changed on one object at a time.");
-            return;
+        for (Object receiver : receivers) {
+            if (receiver instanceof SkoopObject object) {
+                change(object, delta, mode);
+            }
         }
+    }
 
-        if (!(receivers[0] instanceof SkoopObject object)) {
-            return;
-        }
+    private void change(SkoopObject object, Object @Nullable [] delta, Changer.ChangeMode mode) {
+        SkoopClass skoopClass = object.getSkoopClass();
 
-        SkoopField field = object.getSkoopClass().getField(fieldName);
-
+        SkoopField field = skoopClass.getField(fieldName);
         if (field == null) {
-            Skript.error("Class '" + object.getSkoopClass().getName() + "' does not have a field named '" + fieldName + "'");
+            error("Class '" + skoopClass.getName() + "' has no field named '" + fieldName + "'.");
             return;
         }
 
-        if (mode == Changer.ChangeMode.DELETE) {
+        if (mode == Changer.ChangeMode.DELETE || mode == Changer.ChangeMode.RESET || delta == null) {
             object.setField(field, null);
             return;
         }
 
-        if (mode != Changer.ChangeMode.SET || delta == null) {
-            return;
-        }
+        SkoopType type = field.getType();
 
-        if (field.getType().isPlural()) {
-            if (!validatePlural(field, delta)) {
-                return;
+        if (type.isPlural()) {
+            if (acceptsAll(field, delta)) {
+                object.setField(field, delta.clone());
             }
 
-            object.setField(field, delta.clone());
             return;
         }
 
@@ -155,36 +156,24 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
         }
 
         if (delta.length > 1) {
-            Skript.error("Field '" + field.getName() + "' only accepts a single " + field.getType().getName() + " value.");
+            error("Field '" + field.getName() + "' only accepts a single " + type.getName() + " value.");
             return;
         }
 
         Object value = delta[0];
-
-        if (!validateSingle(field, value)) {
+        if (!type.accepts(value)) {
+            error("Field '" + field.getName() + "' expects " + type.getName() + ", but received " + describe(value) + ".");
             return;
         }
 
         object.setField(field, value);
     }
 
-    private boolean validateSingle(SkoopField field, Object value) {
-        if (value == null) {
-            return true;
-        }
-
-        if (!field.getType().accepts(value)) {
-            Skript.error("Field '" + field.getName() + "' expects " + field.getType().getName() + ", but received " + getTypeName(value));
-            return false;
-        }
-
-        return true;
-    }
-
-    private boolean validatePlural(SkoopField field, Object[] values) {
+    private boolean acceptsAll(SkoopField field, Object[] values) {
         for (Object value : values) {
-            if (value != null && !field.getType().accepts(value)) {
-                Skript.error("Field '" + field.getName() + "' expects " + field.getType().getName() + " values, but received " + getTypeName(value));
+            if (!field.getType().accepts(value)) {
+                error("Field '" + field.getName() + "' expects " + field.getType().getName()
+                        + " values, but received " + describe(value) + ".");
                 return false;
             }
         }
@@ -192,7 +181,11 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
         return true;
     }
 
-    private String getTypeName(Object value) {
+    private static String describe(@Nullable Object value) {
+        if (value == null) {
+            return "nothing";
+        }
+
         if (value instanceof SkoopObject object) {
             return object.getSkoopClass().getName();
         }
@@ -202,24 +195,16 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
 
     @Override
     public boolean isSingle() {
-        if (fieldType != null) {
-            return !fieldType.isPlural();
+        if (!objects.isSingle()) {
+            return false;
         }
 
-        return true;
+        return fieldType == null || !fieldType.isPlural();
     }
 
     @Override
     public Class<?> getReturnType() {
-        if (fieldType == null) {
-            return Object.class;
-        }
-
-        if (fieldType.isSkoopType()) {
-            return SkoopObject.class;
-        }
-
-        return fieldType.getSkriptType().getC();
+        return fieldType == null ? Object.class : fieldType.getValueClass();
     }
 
     @Override

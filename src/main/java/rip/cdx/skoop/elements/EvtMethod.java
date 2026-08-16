@@ -5,9 +5,9 @@ import ch.njol.skript.lang.SkriptEvent;
 import ch.njol.skript.lang.SkriptParser;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
-import rip.cdx.skoop.core.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
-public class EvtConstructor extends SkriptEvent {
+public class EvtMethod extends SkriptEvent {
 
     @Override
     public boolean init(Literal<?>[] literals, int matchedPattern, SkriptParser.ParseResult parseResult) {
@@ -16,11 +16,11 @@ public class EvtConstructor extends SkriptEvent {
 
     @Override
     public boolean check(Event event) {
-        return event instanceof SkoopConstructorEvent;
+        return event instanceof SkoopMethodEvent;
     }
 
     @Override
     public String toString(@Nullable Event event, boolean debug) {
-        return "skoop constructor";
+        return "skoop method";
     }
 }

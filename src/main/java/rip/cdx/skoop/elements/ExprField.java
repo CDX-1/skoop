@@ -12,16 +12,20 @@ import org.jetbrains.annotations.Nullable;
 import rip.cdx.skoop.core.api.SkoopField;
 import rip.cdx.skoop.core.api.SkoopObject;
 
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+
 public class ExprField extends SimpleExpression<Object> {
 
-    private Expression<SkoopObject> object;
+    private Expression<SkoopObject> objects;
     private String fieldName;
 
     public static void register(Registration reg) {
         reg.newSimpleExpression(
                         ExprField.class,
                         Object.class,
-                        "%skoopobject%.<([A-Za-z_][A-Za-z0-9_]*)>"
+                        "%skoopobjects%.<([A-Za-z_][A-Za-z0-9_]*)>"
                 )
                 .name("Skoop Field")
                 .description("Gets or changes a field on a Skoop object")
@@ -32,7 +36,7 @@ public class ExprField extends SimpleExpression<Object> {
     @Override
     @SuppressWarnings("unchecked")
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
-        this.object = (Expression<SkoopObject>) expressions[0];
+        this.objects = (Expression<SkoopObject>) expressions[0];
         this.fieldName = parseResult.regexes.getFirst().group(1);
 
         return true;
@@ -40,29 +44,39 @@ public class ExprField extends SimpleExpression<Object> {
 
     @Override
     protected Object @Nullable [] get(Event event) {
-        SkoopObject object = this.object.getSingle(event);
+        SkoopObject[] objects = this.objects.getArray(event);
 
-        if (object == null) {
+        if (objects.length == 0) {
             return null;
         }
 
-        SkoopField field = object.getSkoopClass().getField(fieldName);
+        List<Object> results = new ArrayList<>();
 
-        if (field == null) {
+        for (SkoopObject object : objects) {
+            SkoopField field = object.getSkoopClass().getField(fieldName);
+
+            if (field == null) {
+                continue;
+            }
+
+            Object value = object.getField(field);
+
+            if (value == null) {
+                continue;
+            }
+
+            if (field.getType().isPlural() && value instanceof Object[] values) {
+                Collections.addAll(results, values);
+            } else {
+                results.add(value);
+            }
+        }
+
+        if (results.isEmpty()) {
             return null;
         }
 
-        Object value = object.getField(field);
-
-        if (value == null) {
-            return null;
-        }
-
-        if (field.isPlural() && value instanceof Object[] values) {
-            return values;
-        }
-
-        return new Object[]{value};
+        return results.toArray();
     }
 
     @Override
@@ -76,11 +90,18 @@ public class ExprField extends SimpleExpression<Object> {
 
     @Override
     public void change(Event event, Object @Nullable [] delta, Changer.ChangeMode mode) {
-        SkoopObject object = this.object.getSingle(event);
+        SkoopObject[] objects = this.objects.getArray(event);
 
-        if (object == null) {
+        if (objects.length == 0) {
             return;
         }
+
+        if (objects.length != 1) {
+            Skript.error("A Skoop field can only be changed on one object at a time.");
+            return;
+        }
+
+        SkoopObject object = objects[0];
 
         SkoopField field = object.getSkoopClass().getField(fieldName);
 
@@ -98,7 +119,7 @@ public class ExprField extends SimpleExpression<Object> {
             return;
         }
 
-        if (field.isPlural()) {
+        if (field.getType().isPlural()) {
             if (!validatePlural(field, delta)) {
                 return;
             }
@@ -109,6 +130,11 @@ public class ExprField extends SimpleExpression<Object> {
 
         if (delta.length == 0) {
             object.setField(field, null);
+            return;
+        }
+
+        if (delta.length > 1) {
+            Skript.error("Field '" + field.getName() + "' only accepts a single " + field.getType().getName() + " value.");
             return;
         }
 
@@ -126,10 +152,8 @@ public class ExprField extends SimpleExpression<Object> {
             return true;
         }
 
-        Class<?> expectedType = field.getType().getC();
-
-        if (!expectedType.isInstance(value)) {
-            Skript.error("Field '" + field.getName() + "' expects " + field.getType().getCodeName() + ", but received " + value.getClass().getSimpleName());
+        if (!field.getType().accepts(value)) {
+            Skript.error("Field '" + field.getName() + "' expects " + field.getType().getName() + ", but received " + getTypeName(value));
             return false;
         }
 
@@ -137,16 +161,22 @@ public class ExprField extends SimpleExpression<Object> {
     }
 
     private boolean validatePlural(SkoopField field, Object[] values) {
-        Class<?> expectedType = field.getType().getC();
-
         for (Object value : values) {
-            if (value != null && !expectedType.isInstance(value)) {
-                Skript.error("Field '" + field.getName() + "' expects " + field.getType().getCodeName() + " values, but received " + value.getClass().getSimpleName());
+            if (value != null && !field.getType().accepts(value)) {
+                Skript.error("Field '" + field.getName() + "' expects " + field.getType().getName() + " values, but received " + getTypeName(value));
                 return false;
             }
         }
 
         return true;
+    }
+
+    private String getTypeName(Object value) {
+        if (value instanceof SkoopObject object) {
+            return object.getSkoopClass().getName();
+        }
+
+        return value.getClass().getSimpleName();
     }
 
     @Override
@@ -161,6 +191,6 @@ public class ExprField extends SimpleExpression<Object> {
 
     @Override
     public String toString(@Nullable Event event, boolean debug) {
-        return object.toString(event, debug) + "." + fieldName;
+        return objects.toString(event, debug) + "." + fieldName;
     }
 }

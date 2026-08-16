@@ -9,12 +9,33 @@ import java.util.stream.Collectors;
 
 @Getter
 @RequiredArgsConstructor
-public class SkoopConstructor {
+public class SkoopMethod {
 
+    private final String name;
     private final List<SkoopParameter> parameters;
     private final Trigger trigger;
 
-    public boolean hasSameSignature(SkoopConstructor other) {
+    public boolean matches(Object[] arguments) {
+        if (parameters.size() != arguments.length) {
+            return false;
+        }
+
+        for (int i = 0; i < parameters.size(); i++) {
+            Object argument = arguments[i];
+
+            if (argument == null || !parameters.get(i).type().accepts(argument)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    public boolean hasSameSignature(SkoopMethod other) {
+        if (!name.equalsIgnoreCase(other.name)) {
+            return false;
+        }
+
         if (parameters.size() != other.parameters.size()) {
             return false;
         }
@@ -47,26 +68,5 @@ public class SkoopConstructor {
                 .collect(Collectors.joining(", "));
 
         return "(" + args + ")";
-    }
-
-    public boolean matches(Object[] arguments) {
-        if (parameters.size() != arguments.length) {
-            return false;
-        }
-
-        for (int i = 0; i < parameters.size(); i++) {
-            SkoopParameter parameter = parameters.get(i);
-            Object argument = arguments[i];
-
-            if (argument == null) {
-                return false;
-            }
-
-            if (!parameter.type().accepts(argument)) {
-                return false;
-            }
-        }
-
-        return true;
     }
 }

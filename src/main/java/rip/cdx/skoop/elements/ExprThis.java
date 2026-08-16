@@ -10,7 +10,8 @@ import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
 import rip.cdx.skoop.core.api.SkoopObject;
-import rip.cdx.skoop.elements.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
 public class ExprThis extends SimpleExpression<SkoopObject> {
 
@@ -24,8 +25,10 @@ public class ExprThis extends SimpleExpression<SkoopObject> {
 
     @Override
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
-        if (!ParserInstance.get().isCurrentEvent(SkoopConstructorEvent.class)) {
-            Skript.error("'this' can only be used inside a Skoop class context.");
+        ParserInstance parser = ParserInstance.get();
+
+        if (!parser.isCurrentEvent(SkoopConstructorEvent.class) && !parser.isCurrentEvent(SkoopMethodEvent.class)) {
+            Skript.error("'this' can only be used inside a Skoop constructor or method.");
             return false;
         }
 
@@ -34,11 +37,15 @@ public class ExprThis extends SimpleExpression<SkoopObject> {
 
     @Override
     protected SkoopObject @Nullable [] get(Event event) {
-        if (!(event instanceof SkoopConstructorEvent constructorEvent)) {
-            return null;
+        if (event instanceof SkoopConstructorEvent constructorEvent) {
+            return new SkoopObject[]{constructorEvent.getObject()};
         }
 
-        return new SkoopObject[]{constructorEvent.getObject()};
+        if (event instanceof SkoopMethodEvent methodEvent) {
+            return new SkoopObject[]{methodEvent.getObject()};
+        }
+
+        return null;
     }
 
     @Override

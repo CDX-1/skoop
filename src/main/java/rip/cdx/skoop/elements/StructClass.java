@@ -10,8 +10,6 @@ import ch.njol.skript.lang.SkriptParser;
 import ch.njol.skript.lang.Trigger;
 import ch.njol.skript.lang.TriggerItem;
 import ch.njol.skript.lang.parser.ParserInstance;
-import ch.njol.skript.registrations.Classes;
-import ch.njol.skript.util.Utils;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
@@ -20,11 +18,9 @@ import org.skriptlang.skript.lang.entry.EntryContainer;
 import org.skriptlang.skript.lang.script.Script;
 import org.skriptlang.skript.lang.structure.Structure;
 import rip.cdx.skoop.Skoop;
-import rip.cdx.skoop.core.api.SkoopClass;
-import rip.cdx.skoop.core.api.SkoopConstructor;
-import rip.cdx.skoop.core.api.SkoopField;
-import rip.cdx.skoop.core.api.SkoopParameter;
-import rip.cdx.skoop.elements.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.api.*;
+import rip.cdx.skoop.core.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,7 +31,15 @@ import java.util.regex.Pattern;
 public class StructClass extends Structure {
 
     private static final Pattern FIELD_PATTERN = Pattern.compile("(?<name>[A-Za-z_][A-Za-z0-9_]*): (?<type>[\\w ]+)");
-    private static final Pattern CONSTRUCTOR_PATTERN = Pattern.compile("^constructor\\s*\\((?<args>.*)\\)$", Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONSTRUCTOR_PATTERN = Pattern.compile(
+            "^constructor\\s*\\((?<args>.*)\\)$",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    private static final Pattern METHOD_PATTERN = Pattern.compile(
+            "^method\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*\\((?<args>.*)\\)$",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private SkoopClass skoopClass;
     private String className;
@@ -59,16 +63,21 @@ public class StructClass extends Structure {
     }
 
     @Override
-    public boolean load() {
+    public boolean preLoad() {
         if (Skoop.getInstance().getClassRegistry().contains(className)) {
             Skript.error("A class named '" + className + "' is already registered.");
             return false;
         }
 
+        Skoop.getInstance().getClassRegistry().register(skoopClass);
+        return true;
+    }
+
+    @Override
+    public boolean load() {
         SectionNode node = entryContainer.getSource();
 
         for (Node child : node) {
-
             if (child instanceof SectionNode sectionNode) {
                 String key = ScriptLoader.replaceOptions(sectionNode.getKey());
 
@@ -86,7 +95,21 @@ public class StructClass extends Structure {
                     continue;
                 }
 
-                Skript.error("Unknown section '" + key + "' in class " + className);
+                Matcher methodMatcher = METHOD_PATTERN.matcher(key);
+
+                if (methodMatcher.matches()) {
+                    if (!loadMethod(
+                            methodMatcher.group("name"),
+                            methodMatcher.group("args"),
+                            sectionNode
+                    )) {
+                        return false;
+                    }
+
+                    continue;
+                }
+
+                Skript.error("Unknown section '" + key + "' in class '" + className + "'");
                 return false;
             }
 
@@ -102,10 +125,6 @@ public class StructClass extends Structure {
                 }
             }
         }
-
-        Skoop.getInstance()
-                .getClassRegistry()
-                .register(skoopClass);
 
         return true;
     }
@@ -126,17 +145,19 @@ public class StructClass extends Structure {
             return false;
         }
 
-        Utils.PluralResult plural = Utils.isPlural(typeName);
-        var classInfo = Classes.getClassInfoFromUserInput(plural.updated());
+        if (skoopClass.hasField(fieldName)) {
+            Skript.error("Duplicate field '" + fieldName + "' in class '" + className + "'");
+            return false;
+        }
 
-        if (classInfo == null) {
+        SkoopType type = SkoopType.resolveType(typeName);
+
+        if (type == null) {
             Skript.error("Unknown type '" + typeName + "' for field '" + fieldName + "'");
             return false;
         }
 
-        SkoopField field = new SkoopField(fieldName, classInfo, plural.plural());
-        skoopClass.addField(field);
-
+        skoopClass.addField(new SkoopField(fieldName, type));
         return true;
     }
 
@@ -183,27 +204,75 @@ public class StructClass extends Structure {
         return true;
     }
 
+    private boolean loadMethod(String name, String args, SectionNode node) {
+        String methodName = name.toLowerCase(Locale.ENGLISH);
+
+        List<SkoopParameter> parameters = new ArrayList<>();
+
+        if (!args.isBlank()) {
+            String[] splitArgs = args.split(",");
+
+            for (String rawArg : splitArgs) {
+                SkoopParameter parameter = parseParameter(rawArg.trim());
+
+                if (parameter == null) {
+                    return false;
+                }
+
+                parameters.add(parameter);
+            }
+        }
+
+        ParserInstance parser = ParserInstance.get();
+        ParserInstance.Backup backup = parser.backup();
+
+        ArrayList<TriggerItem> items;
+        Script script = parser.getCurrentScript();
+
+        try {
+            parser.setCurrentEvent("skoop method", SkoopMethodEvent.class);
+            items = ScriptLoader.loadItems(node);
+        } finally {
+            parser.restoreBackup(backup);
+        }
+
+        Trigger trigger = new Trigger(
+                script,
+                "method " + className + "." + methodName,
+                new EvtMethod(),
+                items
+        );
+
+        SkoopMethod method = new SkoopMethod(methodName, parameters, trigger);
+
+        if (skoopClass.hasMethod(method)) {
+            Skript.error("Duplicate method '" + methodName + method.getSignature() + "' in class '" + className + "'");
+            return false;
+        }
+
+        skoopClass.addMethod(method);
+        return true;
+    }
+
     private SkoopParameter parseParameter(String input) {
         Matcher matcher = FIELD_PATTERN.matcher(input);
 
         if (!matcher.matches()) {
-            Skript.error("Invalid constructor parameter '" + input + "'. Expected: <name>:<type>");
+            Skript.error("Invalid constructor parameter '" + input + "'. Expected: <name>: <type>");
             return null;
         }
 
         String parameterName = matcher.group("name").toLowerCase(Locale.ENGLISH);
         String typeName = matcher.group("type").trim();
 
-        Utils.PluralResult plural = Utils.isPlural(typeName);
+        SkoopType type = SkoopType.resolveType(typeName);
 
-        var classInfo = Classes.getClassInfoFromUserInput(plural.updated());
-
-        if (classInfo == null) {
+        if (type == null) {
             Skript.error("Unknown type '" + typeName + "' for constructor parameter '" + parameterName + "'");
             return null;
         }
 
-        return new SkoopParameter(parameterName, classInfo, plural.plural());
+        return new SkoopParameter(parameterName, type);
     }
 
     private boolean isReserved(String name) {

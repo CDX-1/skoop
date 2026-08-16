@@ -12,7 +12,7 @@ import rip.cdx.skoop.Skoop;
 import rip.cdx.skoop.core.api.SkoopClass;
 import rip.cdx.skoop.core.api.SkoopConstructor;
 import rip.cdx.skoop.core.api.SkoopObject;
-import rip.cdx.skoop.elements.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopConstructorEvent;
 
 public class ExprNew extends SimpleExpression<SkoopObject> {
 

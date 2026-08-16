@@ -9,42 +9,43 @@ import ch.njol.util.Kleenean;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
-import rip.cdx.skoop.core.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
-public class ExprConstructorArgument extends SimpleExpression<Object> {
+public class ExprMethodArgument extends SimpleExpression<Object> {
 
     private String argumentName;
 
     public static void register(Registration reg) {
         reg.newSimpleExpression(
-                        ExprConstructorArgument.class,
+                        ExprMethodArgument.class,
                         Object.class,
-                        "constructor arg[ument] <([A-Za-z_][A-Za-z0-9_]*)>"
+                        "method arg[ument] <([A-Za-z_][A-Za-z0-9_]*)>"
                 )
-                .name("Skoop Constructor Argument")
-                .description("Gets an argument passed to the current Skoop constructor")
+                .name("Skoop Method Argument")
+                .description("Gets an argument passed to the current Skoop method")
                 .since("1.0.0")
                 .register();
     }
 
     @Override
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
-        if (!ParserInstance.get().isCurrentEvent(SkoopConstructorEvent.class)) {
-            Skript.error("Constructor arguments can only be used inside a Skoop constructor.");
+        if (!ParserInstance.get().isCurrentEvent(SkoopMethodEvent.class)) {
+            Skript.error("Method arguments can only be used inside a Skoop method.");
             return false;
         }
 
         this.argumentName = parseResult.regexes.getFirst().group(1);
+
         return true;
     }
 
     @Override
     protected Object @Nullable [] get(Event event) {
-        if (!(event instanceof SkoopConstructorEvent constructorEvent)) {
+        if (!(event instanceof SkoopMethodEvent methodEvent)) {
             return null;
         }
 
-        Object value = constructorEvent.getArgument(argumentName);
+        Object value = methodEvent.getArgument(argumentName);
 
         if (value == null) {
             return null;
@@ -65,6 +66,6 @@ public class ExprConstructorArgument extends SimpleExpression<Object> {
 
     @Override
     public String toString(@Nullable Event event, boolean debug) {
-        return "constructor argument " + argumentName;
+        return "method argument " + argumentName;
     }
 }

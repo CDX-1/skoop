@@ -17,6 +17,10 @@ public final class SkoopClassRegistry {
         );
     }
 
+    public void unregister(SkoopClass skoopClass) {
+        classes.remove(skoopClass.getName().toLowerCase(Locale.ENGLISH));
+    }
+
     public SkoopClass get(String name) {
         return classes.get(name.toLowerCase(Locale.ENGLISH));
     }

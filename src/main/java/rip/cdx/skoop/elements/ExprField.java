@@ -206,7 +206,7 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
             return !fieldType.isPlural();
         }
 
-        return false;
+        return true;
     }
 
     @Override

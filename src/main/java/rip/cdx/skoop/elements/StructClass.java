@@ -322,6 +322,11 @@ public class StructClass extends Structure {
     }
 
     @Override
+    public void unload() {
+        Skoop.getInstance().getClassRegistry().unregister(skoopClass);
+    }
+
+    @Override
     public String toString(@Nullable Event event, boolean b) {
         return "class " + className;
     }

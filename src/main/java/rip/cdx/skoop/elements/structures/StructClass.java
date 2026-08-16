@@ -30,6 +30,7 @@ import rip.cdx.skoop.api.SkoopParameter;
 import rip.cdx.skoop.api.SkoopType;
 import rip.cdx.skoop.core.SkoopParseContext;
 import rip.cdx.skoop.core.events.SkoopConstructorEvent;
+import rip.cdx.skoop.core.events.SkoopFieldDefaultEvent;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
 import rip.cdx.skoop.elements.events.EvtConstructor;
 import rip.cdx.skoop.elements.events.EvtMethod;
@@ -177,7 +178,7 @@ public class StructClass extends Structure {
         Expression<?> defaultValue = null;
 
         if (defaultInput != null && !defaultInput.isBlank()) {
-            defaultValue = parseDefaultValue(defaultInput, fieldName);
+            defaultValue = parseDefaultValue(defaultInput, fieldName, type);
 
             if (defaultValue == null) {
                 return false;
@@ -188,22 +189,40 @@ public class StructClass extends Structure {
         return true;
     }
 
-    private @Nullable Expression<?> parseDefaultValue(String input, String fieldName) {
-        Expression<?> parsed = new SkriptParser(input, SkriptParser.ALL_FLAGS, ParseContext.DEFAULT)
-                .parseExpression(Object.class);
+    /**
+     * Parses a field's default value against the field's declared type, so a mismatch is an error
+     * here rather than a value silently dropped when the object is constructed.
+     * <p>
+     * Parsed under {@link SkoopFieldDefaultEvent}, which carries no event-values: a default has to
+     * mean the same thing no matter who constructs the object.
+     */
+    private @Nullable Expression<?> parseDefaultValue(String input, String fieldName, SkoopType type) {
+        ParserInstance parser = ParserInstance.get();
+        ParserInstance.Backup backup = parser.backup();
+
+        Expression<?> parsed;
+
+        try {
+            parser.setCurrentEvent("skoop field default", SkoopFieldDefaultEvent.class);
+            parsed = new SkriptParser(input, SkriptParser.ALL_FLAGS, ParseContext.DEFAULT)
+                    .parseExpression(type.getValueClass());
+        } finally {
+            parser.restoreBackup(backup);
+        }
 
         if (parsed == null) {
-            Skript.error("Could not parse the default value '" + input + "' of field '" + fieldName + "'.");
+            Skript.error("Could not parse '" + input + "' as a " + type.toSignatureString()
+                    + " default for field '" + fieldName + "'.");
             return null;
         }
 
-        Expression<?> converted = parsed.getConvertedExpression(Object.class);
-        if (converted == null) {
-            Skript.error("Could not convert the default value of field '" + fieldName + "'.");
+        if (!type.isPlural() && !parsed.isSingle()) {
+            Skript.error("Field '" + fieldName + "' holds a single " + type.getName()
+                    + ", but its default value is a list.");
             return null;
         }
 
-        return converted;
+        return parsed;
     }
 
     // SECOND PASS: CONSTRUCTORS AND METHODS
@@ -330,9 +349,13 @@ public class StructClass extends Structure {
             parser.restoreBackup(backup);
         }
 
-        if (delayed) {
-            Skript.error("A " + triggerName + " body cannot be delayed: the caller runs it synchronously "
-                    + "and would never see the result.");
+        // Only a declared return value is actually broken by a delay: the caller reads it the
+        // moment the call returns, so anything returned after the delay is silently dropped.
+        // Void methods and constructors are free to delay -- timed effects are a normal reason to.
+        if (delayed && returnType != null) {
+            Skript.error("A method that returns " + returnType.toSignatureString() + " cannot be delayed: "
+                    + "the caller reads the result as soon as the call returns, so a value returned "
+                    + "after the delay would be lost. Drop the return type to make it a void method.");
             return null;
         }
 
@@ -351,7 +374,13 @@ public class StructClass extends Structure {
             return parameters;
         }
 
-        for (String rawArg : args.split(",")) {
+        List<String> rawArgs = splitArguments(args);
+        if (rawArgs == null) {
+            Skript.error("Unbalanced brackets or quotes in the parameter list of " + owner + ".");
+            return null;
+        }
+
+        for (String rawArg : rawArgs) {
             SkoopParameter parameter = parseParameter(rawArg.trim(), owner);
             if (parameter == null) {
                 return null;
@@ -366,6 +395,61 @@ public class StructClass extends Structure {
         }
 
         return parameters;
+    }
+
+    /**
+     * Splits a parameter list on commas that are not nested inside brackets or a quoted string, so
+     * that a type or value containing a comma stays in one piece.
+     *
+     * @return the segments, or null if the brackets or quotes are unbalanced
+     */
+    private static @Nullable List<String> splitArguments(String args) {
+        List<String> segments = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+
+        int depth = 0;
+        boolean quoted = false;
+
+        for (int i = 0; i < args.length(); i++) {
+            char character = args.charAt(i);
+
+            if (character == '"') {
+                // "" is an escaped quote inside a Skript string, not the end of one.
+                if (quoted && i + 1 < args.length() && args.charAt(i + 1) == '"') {
+                    current.append(character).append(args.charAt(++i));
+                    continue;
+                }
+
+                quoted = !quoted;
+            } else if (!quoted) {
+                switch (character) {
+                    case '(', '[', '{' -> depth++;
+                    case ')', ']', '}' -> depth--;
+                    case ',' -> {
+                        if (depth == 0) {
+                            segments.add(current.toString());
+                            current.setLength(0);
+                            continue;
+                        }
+                    }
+                    default -> {
+                    }
+                }
+
+                if (depth < 0) {
+                    return null;
+                }
+            }
+
+            current.append(character);
+        }
+
+        if (depth != 0 || quoted) {
+            return null;
+        }
+
+        segments.add(current.toString());
+        return segments;
     }
 
     private @Nullable SkoopParameter parseParameter(String input, String owner) {

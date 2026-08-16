@@ -5,16 +5,16 @@ import rip.cdx.skoop.api.SkoopClass;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Holds every class currently declared by a loaded script, keyed case-insensitively by name.
  */
 public final class SkoopClassRegistry {
 
-    private final Map<String, SkoopClass> classes = new LinkedHashMap<>();
+    private final Map<String, SkoopClass> classes = new ConcurrentHashMap<>();
 
     private static String key(String name) {
         return name.toLowerCase(Locale.ENGLISH);

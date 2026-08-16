@@ -38,7 +38,7 @@ public class ExprThis extends SimpleExpression<SkoopObject> implements SkoopType
 
         SkoopClass currentClass = SkoopParseContext.getCurrentClass();
         if (currentClass != null) {
-            this.type = new SkoopType(currentClass.getName(), null, currentClass, false);
+            this.type = SkoopType.ofSkoopClass(currentClass.getName(), false);
         }
 
         return true;

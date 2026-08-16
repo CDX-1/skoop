@@ -46,7 +46,7 @@ public class ExprNew extends SimpleExpression<SkoopObject> implements SkoopTypeP
             return false;
         }
 
-        this.type = new SkoopType(skoopClass.getName(), null, skoopClass, false);
+        this.type = SkoopType.ofSkoopClass(skoopClass.getName(), false);
 
         if (matchedPattern == 1) {
             this.arguments = expressions[0].getConvertedExpression(Object.class);
@@ -71,7 +71,7 @@ public class ExprNew extends SimpleExpression<SkoopObject> implements SkoopTypeP
         Object[] values = arguments == null ? new Object[0] : arguments.getArray(event);
 
         SkoopObject object = new SkoopObject(skoopClass);
-        object.initializeDefaults(event);
+        object.initializeDefaults();
 
         SkoopConstructor constructor = skoopClass.findConstructor(values);
         if (constructor == null) {

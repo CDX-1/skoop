@@ -68,6 +68,10 @@ public final class SkoopMethodCall {
         }
 
         SkoopClass ownerClass = ownerType.getSkoopClass();
+        if (ownerClass == null) {
+            return null;
+        }
+
         List<SkoopMethod> overloads = ownerClass.getMethods(methodName);
         if (overloads.isEmpty()) {
             return null;

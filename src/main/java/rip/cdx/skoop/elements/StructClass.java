@@ -35,9 +35,8 @@ public class StructClass extends Structure {
             "^constructor\\s*\\((?<args>.*)\\)$",
             Pattern.CASE_INSENSITIVE
     );
-
     private static final Pattern METHOD_PATTERN = Pattern.compile(
-            "^method\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*\\((?<args>.*)\\)$",
+            "^method\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*\\((?<args>.*)\\)(?:\\s+returns\\s+(?<return>[\\w\\[\\] ]+))?$",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -96,11 +95,11 @@ public class StructClass extends Structure {
                 }
 
                 Matcher methodMatcher = METHOD_PATTERN.matcher(key);
-
                 if (methodMatcher.matches()) {
                     if (!loadMethod(
                             methodMatcher.group("name"),
                             methodMatcher.group("args"),
+                            methodMatcher.group("return"),
                             sectionNode
                     )) {
                         return false;
@@ -204,7 +203,7 @@ public class StructClass extends Structure {
         return true;
     }
 
-    private boolean loadMethod(String name, String args, SectionNode node) {
+    private boolean loadMethod(String name, String args, @Nullable String returnTypeName, SectionNode node) {
         String methodName = name.toLowerCase(Locale.ENGLISH);
 
         List<SkoopParameter> parameters = new ArrayList<>();
@@ -220,6 +219,17 @@ public class StructClass extends Structure {
                 }
 
                 parameters.add(parameter);
+            }
+        }
+
+        SkoopType returnType = null;
+
+        if (returnTypeName != null && !returnTypeName.isBlank()) {
+            returnType = SkoopType.resolveType(returnTypeName.trim());
+
+            if (returnType == null) {
+                Skript.error("Unknown return type '" + returnTypeName + "' for method '" + methodName + "'");
+                return false;
             }
         }
 
@@ -243,7 +253,12 @@ public class StructClass extends Structure {
                 items
         );
 
-        SkoopMethod method = new SkoopMethod(methodName, parameters, trigger);
+        SkoopMethod method = new SkoopMethod(
+                methodName,
+                parameters,
+                returnType,
+                trigger
+        );
 
         if (skoopClass.hasMethod(method)) {
             Skript.error("Duplicate method '" + methodName + method.getSignature() + "' in class '" + className + "'");

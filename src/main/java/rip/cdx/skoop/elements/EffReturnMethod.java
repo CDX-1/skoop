@@ -10,6 +10,8 @@ import ch.njol.util.Kleenean;
 import com.github.shanebeee.skr.Registration;
 import org.bukkit.event.Event;
 import org.jetbrains.annotations.Nullable;
+import rip.cdx.skoop.core.api.SkoopMethod;
+import rip.cdx.skoop.core.api.SkoopType;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
 
 public class EffReturnMethod extends Effect {
@@ -30,7 +32,7 @@ public class EffReturnMethod extends Effect {
     @Override
     public boolean init(Expression<?>[] expressions, int matchedPattern, Kleenean isDelayed, SkriptParser.ParseResult parseResult) {
         if (!ParserInstance.get().isCurrentEvent(SkoopMethodEvent.class)) {
-            Skript.error("This return effect can only be used inside a Skoop method.");
+            Skript.error("Return can only be used inside a Skoop method.");
             return false;
         }
 
@@ -46,7 +48,6 @@ public class EffReturnMethod extends Effect {
 
     @Override
     protected void execute(Event event) {
-        // handled in walk()
     }
 
     @Override
@@ -55,17 +56,46 @@ public class EffReturnMethod extends Effect {
             return null;
         }
 
+        SkoopMethod method = methodEvent.getMethod();
+        SkoopType returnType = method.getReturnType();
+
+        if (returnType == null) {
+            Skript.error("Method '" + method.getName() + "' does not declare a return type.");
+            return null;
+        }
+
         Object[] values = value.getArray(event);
+
+        if (returnType.isPlural()) {
+            for (Object returnedValue : values) {
+                if (!returnType.accepts(returnedValue)) {
+                    Skript.error("Method '" + method.getName() + "' expects return type " + returnType.getName());
+                    return null;
+                }
+            }
+
+            methodEvent.setReturnValue(values);
+            return null;
+        }
 
         if (values.length == 0) {
             methodEvent.setReturnValue(null);
-        } else if (values.length == 1) {
-            methodEvent.setReturnValue(values[0]);
-        } else {
-            methodEvent.setReturnValue(values);
+            return null;
         }
 
-        // null stops the method trigger here.
+        if (values.length > 1) {
+            Skript.error("Method '" + method.getName() + "' expects a single " + returnType.getName() + " return value.");
+            return null;
+        }
+
+        Object returnedValue = values[0];
+
+        if (!returnType.accepts(returnedValue)) {
+            Skript.error("Method '" + method.getName() + "' expects return type " + returnType.getName());
+            return null;
+        }
+
+        methodEvent.setReturnValue(returnedValue);
         return null;
     }
 

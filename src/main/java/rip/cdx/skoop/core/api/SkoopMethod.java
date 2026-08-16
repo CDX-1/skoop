@@ -3,6 +3,7 @@ package rip.cdx.skoop.core.api;
 import ch.njol.skript.lang.Trigger;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -13,7 +14,12 @@ public class SkoopMethod {
 
     private final String name;
     private final List<SkoopParameter> parameters;
+    private final @Nullable SkoopType returnType;
     private final Trigger trigger;
+
+    public boolean isVoid() {
+        return returnType == null;
+    }
 
     public boolean matches(Object[] arguments) {
         if (parameters.size() != arguments.length) {

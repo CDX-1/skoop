@@ -32,8 +32,10 @@ import rip.cdx.skoop.core.SkoopParseContext;
 import rip.cdx.skoop.core.events.SkoopConstructorEvent;
 import rip.cdx.skoop.core.events.SkoopFieldDefaultEvent;
 import rip.cdx.skoop.core.events.SkoopMethodEvent;
+import rip.cdx.skoop.core.events.SkoopStaticEvent;
 import rip.cdx.skoop.elements.events.EvtConstructor;
 import rip.cdx.skoop.elements.events.EvtMethod;
+import rip.cdx.skoop.elements.events.EvtStatic;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -51,20 +53,31 @@ import java.util.regex.Pattern;
 public class StructClass extends Structure {
 
     private static final Pattern FIELD_PATTERN = Pattern.compile(
-            "^(?<name>[A-Za-z_][A-Za-z0-9_]*):\\s*(?<type>[\\w\\[\\] ]+?)(?:\\s*=\\s*(?<default>.+))?$"
+            "^(?<static>static\\s+)?(?<name>[A-Za-z_][A-Za-z0-9_]*):\\s*(?<type>[\\w\\[\\] ]+?)(?:\\s*=\\s*(?<default>.+))?$"
     );
     private static final Pattern CONSTRUCTOR_PATTERN = Pattern.compile(
             "^constructor\\s*\\((?<args>.*)\\)$",
             Pattern.CASE_INSENSITIVE
     );
     private static final Pattern METHOD_PATTERN = Pattern.compile(
-            "^method\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*\\((?<args>.*)\\)(?:\\s+returns\\s+(?<return>[\\w\\[\\] ]+))?$",
+            "^(?<static>static\\s+)?method\\s+(?<name>[A-Za-z_][A-Za-z0-9_]*)\\s*\\((?<args>.*)\\)(?:\\s+returns\\s+(?<return>[\\w\\[\\] ]+))?$",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern STATIC_BODY_PATTERN = Pattern.compile(
+            "^static$",
             Pattern.CASE_INSENSITIVE
     );
 
     private static final Set<String> RESERVED_NAMES = Set.of(
             "class", "constructor", "method", "function", "static", "extends", "this"
     );
+
+    /**
+     * Classes must be fully loaded before any trigger that references them is parsed, otherwise
+     * {@code Counter.total} would be looked up against a class that has no members yet. Sits just
+     * after Skript's functions (400) and well before events and commands (the 1000 default).
+     */
+    private static final Priority PRIORITY = new Priority(450);
 
     private String className;
     private SkoopClass skoopClass;
@@ -99,6 +112,11 @@ public class StructClass extends Structure {
     }
 
     @Override
+    public Priority getPriority() {
+        return PRIORITY;
+    }
+
+    @Override
     public boolean preLoad() {
         if (Skoop.getInstance().getClassRegistry().contains(className)) {
             Skript.error("A class named '" + className + "' is already declared.");
@@ -122,8 +140,21 @@ public class StructClass extends Structure {
         return true;
     }
 
+    /**
+     * Runs the static field defaults and {@code static:} bodies.
+     * <p>
+     * Deferred to postLoad so that every class in the batch has finished loading first — a static
+     * body may reference another class's statics, or construct one of its instances.
+     */
+    @Override
+    public boolean postLoad() {
+        skoopClass.runStaticInitializers();
+        return true;
+    }
+
     @Override
     public void unload() {
+        skoopClass.clearStaticState();
         Skoop.getInstance().getClassRegistry().unregister(skoopClass);
     }
 
@@ -155,6 +186,7 @@ public class StructClass extends Structure {
             return false;
         }
 
+        boolean isStatic = matcher.group("static") != null;
         String fieldName = matcher.group("name");
         String typeName = matcher.group("type").trim();
         String defaultInput = matcher.group("default");
@@ -164,7 +196,9 @@ public class StructClass extends Structure {
             return false;
         }
 
-        if (skoopClass.hasField(fieldName)) {
+        // Static and instance fields share a namespace, so that 'Foo.bar' and '{_foo}.bar' can
+        // never mean two different fields in the same class.
+        if (skoopClass.hasField(fieldName) || skoopClass.hasStaticField(fieldName)) {
             Skript.error("Duplicate field '" + fieldName + "' in class '" + className + "'.");
             return false;
         }
@@ -185,7 +219,14 @@ public class StructClass extends Structure {
             }
         }
 
-        skoopClass.addField(new SkoopField(fieldName, type, defaultValue));
+        SkoopField field = new SkoopField(fieldName, type, defaultValue);
+
+        if (isStatic) {
+            skoopClass.addStaticField(field);
+        } else {
+            skoopClass.addField(field);
+        }
+
         return true;
     }
 
@@ -238,6 +279,14 @@ public class StructClass extends Structure {
                 continue;
             }
 
+            if (STATIC_BODY_PATTERN.matcher(key).matches()) {
+                if (!loadStaticBody(sectionNode)) {
+                    return false;
+                }
+
+                continue;
+            }
+
             Matcher constructorMatcher = CONSTRUCTOR_PATTERN.matcher(key);
             if (constructorMatcher.matches()) {
                 if (!loadConstructor(constructorMatcher.group("args"), sectionNode)) {
@@ -269,7 +318,7 @@ public class StructClass extends Structure {
             return false;
         }
 
-        Trigger trigger = loadBody(node, parameters, null,
+        Trigger trigger = loadBody(node, parameters, null, false,
                 "skoop constructor", SkoopConstructorEvent.class, new EvtConstructor(),
                 "constructor " + className);
         if (trigger == null) {
@@ -287,10 +336,12 @@ public class StructClass extends Structure {
     }
 
     private boolean loadMethod(Matcher matcher, SectionNode node) {
+        boolean isStatic = matcher.group("static") != null;
         String methodName = matcher.group("name");
         String returnTypeName = matcher.group("return");
+        String label = (isStatic ? "static method '" : "method '") + methodName + "'";
 
-        List<SkoopParameter> parameters = parseParameters(matcher.group("args"), "method '" + methodName + "'");
+        List<SkoopParameter> parameters = parseParameters(matcher.group("args"), label);
         if (parameters == null) {
             return false;
         }
@@ -301,19 +352,31 @@ public class StructClass extends Structure {
             returnType = SkoopType.resolveType(returnTypeName.trim());
 
             if (returnType == null) {
-                Skript.error("Unknown return type '" + returnTypeName.trim() + "' for method '" + methodName + "'.");
+                Skript.error("Unknown return type '" + returnTypeName.trim() + "' for " + label + ".");
                 return false;
             }
         }
 
-        Trigger trigger = loadBody(node, parameters, returnType,
+        Trigger trigger = loadBody(node, parameters, returnType, isStatic,
                 "skoop method", SkoopMethodEvent.class, new EvtMethod(),
-                "method " + className + "." + methodName);
+                (isStatic ? "static method " : "method ") + className + "." + methodName);
         if (trigger == null) {
             return false;
         }
 
         SkoopMethod method = new SkoopMethod(methodName, parameters, returnType, trigger);
+
+        if (isStatic) {
+            if (skoopClass.hasStaticMethod(method)) {
+                Skript.error("Duplicate static method '" + methodName + method.getSignature()
+                        + "' in class '" + className + "'.");
+                return false;
+            }
+
+            skoopClass.addStaticMethod(method);
+            return true;
+        }
+
         if (skoopClass.hasMethod(method)) {
             Skript.error("Duplicate method '" + methodName + method.getSignature() + "' in class '" + className + "'.");
             return false;
@@ -328,8 +391,20 @@ public class StructClass extends Structure {
      *
      * @return the loaded trigger, or null if the body is invalid
      */
+    private boolean loadStaticBody(SectionNode node) {
+        Trigger trigger = loadBody(node, List.of(), null, true,
+                "skoop static body", SkoopStaticEvent.class, new EvtStatic(),
+                "static body of " + className);
+        if (trigger == null) {
+            return false;
+        }
+
+        skoopClass.addStaticBody(trigger);
+        return true;
+    }
+
     private @Nullable Trigger loadBody(SectionNode node, List<SkoopParameter> parameters, @Nullable SkoopType returnType,
-                                       String eventName, Class<? extends Event> eventType,
+                                       boolean isStatic, String eventName, Class<? extends Event> eventType,
                                        SkriptEvent skriptEvent, String triggerName) {
         ParserInstance parser = ParserInstance.get();
         ParserInstance.Backup backup = parser.backup();
@@ -340,7 +415,7 @@ public class StructClass extends Structure {
 
         try {
             parser.setCurrentEvent(eventName, eventType);
-            SkoopParseContext.enter(skoopClass, parameters, returnType);
+            SkoopParseContext.enter(skoopClass, parameters, returnType, isStatic);
 
             items = ScriptLoader.loadItems(node);
             delayed = parser.getHasDelayBefore() != Kleenean.FALSE;

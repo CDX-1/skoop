@@ -12,12 +12,12 @@ import rip.cdx.skoop.api.SkoopClass;
 import rip.cdx.skoop.api.SkoopField;
 import rip.cdx.skoop.api.SkoopObject;
 import rip.cdx.skoop.api.SkoopType;
+import rip.cdx.skoop.core.SkoopFieldMutator;
 import rip.cdx.skoop.core.SkoopTypeProvider;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 
 public class ExprField extends SimpleExpression<Object> implements SkoopTypeProvider {
 
@@ -115,16 +115,7 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
 
     @Override
     public Class<?> @Nullable [] acceptChange(Changer.ChangeMode mode) {
-        return switch (mode) {
-            case SET -> new Class[]{Object[].class};
-            case DELETE, RESET -> new Class[0];
-            // Only meaningful on plural fields. When the field type could not be resolved at parse
-            // time the mode is accepted here and rejected at runtime instead.
-            case ADD, REMOVE, REMOVE_ALL -> fieldType != null && !fieldType.isPlural()
-                    ? null
-                    : new Class[]{Object[].class};
-            default -> null;
-        };
+        return SkoopFieldMutator.acceptChange(mode, fieldType);
     }
 
     @Override
@@ -154,108 +145,12 @@ public class ExprField extends SimpleExpression<Object> implements SkoopTypeProv
             return;
         }
 
-        if (mode == Changer.ChangeMode.DELETE || mode == Changer.ChangeMode.RESET || delta == null) {
-            object.setField(field, null);
-            return;
+        SkoopFieldMutator.Result result = SkoopFieldMutator.apply(
+                object.getField(field), field.getType(), field.getName(), delta, mode, this::error);
+
+        if (result.changed()) {
+            object.setField(field, result.value());
         }
-
-        SkoopType type = field.getType();
-
-        if (mode == Changer.ChangeMode.ADD || mode == Changer.ChangeMode.REMOVE || mode == Changer.ChangeMode.REMOVE_ALL) {
-            if (!type.isPlural()) {
-                error("Field '" + field.getName() + "' holds a single " + type.getName()
-                        + ", so values cannot be added to or removed from it.");
-                return;
-            }
-
-            changeElements(object, field, delta, mode);
-            return;
-        }
-
-        if (type.isPlural()) {
-            if (acceptsAll(field, delta)) {
-                object.setField(field, delta.clone());
-            }
-
-            return;
-        }
-
-        if (delta.length == 0) {
-            object.setField(field, null);
-            return;
-        }
-
-        if (delta.length > 1) {
-            error("Field '" + field.getName() + "' only accepts a single " + type.getName() + " value.");
-            return;
-        }
-
-        Object value = delta[0];
-        if (!type.accepts(value)) {
-            error("Field '" + field.getName() + "' expects " + type.getName() + ", but received " + describe(value) + ".");
-            return;
-        }
-
-        object.setField(field, value);
-    }
-
-    /**
-     * Applies an element-wise change to a plural field.
-     * <p>
-     * {@code REMOVE} drops one occurrence per given value, {@code REMOVE_ALL} drops every
-     * occurrence, matching how Skript lists behave elsewhere.
-     */
-    private void changeElements(SkoopObject object, SkoopField field, Object[] delta, Changer.ChangeMode mode) {
-        Object current = object.getField(field);
-        List<Object> values = new ArrayList<>();
-
-        if (current instanceof Object[] existing) {
-            Collections.addAll(values, existing);
-        } else if (current != null) {
-            values.add(current);
-        }
-
-        if (mode == Changer.ChangeMode.ADD) {
-            if (!acceptsAll(field, delta)) {
-                return;
-            }
-
-            Collections.addAll(values, delta);
-        } else {
-            for (Object removed : delta) {
-                if (mode == Changer.ChangeMode.REMOVE_ALL) {
-                    values.removeIf(value -> Objects.equals(value, removed));
-                } else {
-                    values.remove(removed);
-                }
-            }
-        }
-
-        object.setField(field, values.isEmpty() ? null : values.toArray());
-    }
-
-    private boolean acceptsAll(SkoopField field, Object[] values) {
-        for (Object value : values) {
-            if (!field.getType().accepts(value)) {
-                error("Field '" + field.getName() + "' expects " + field.getType().getName()
-                        + " values, but received " + describe(value) + ".");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static String describe(@Nullable Object value) {
-        if (value == null) {
-            return "nothing";
-        }
-
-        if (value instanceof SkoopObject object) {
-            return object.getSkoopClass().getName();
-        }
-
-        return value.getClass().getSimpleName();
     }
 
     @Override

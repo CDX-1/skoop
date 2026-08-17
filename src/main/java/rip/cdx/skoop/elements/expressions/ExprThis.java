@@ -36,6 +36,11 @@ public class ExprThis extends SimpleExpression<SkoopObject> implements SkoopType
             return false;
         }
 
+        if (SkoopParseContext.isStatic()) {
+            Skript.error("'this' cannot be used in a static method: there is no instance to refer to.");
+            return false;
+        }
+
         SkoopClass currentClass = SkoopParseContext.getCurrentClass();
         if (currentClass != null) {
             this.type = SkoopType.ofSkoopClass(currentClass.getName(), false);

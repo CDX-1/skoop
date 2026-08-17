@@ -16,7 +16,7 @@ public class SkoopMethodEvent extends SkoopInvocationEvent {
 
     private @Nullable Object returnValue;
 
-    public SkoopMethodEvent(SkoopObject object, SkoopMethod method, Object[] arguments) {
+    public SkoopMethodEvent(@Nullable SkoopObject object, SkoopMethod method, Object[] arguments) {
         super(object, method, arguments);
     }
 

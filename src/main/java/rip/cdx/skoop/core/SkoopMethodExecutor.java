@@ -54,12 +54,12 @@ public final class SkoopMethodExecutor {
      *
      * @return the value returned by the method, or null if it is void or the depth limit was hit
      */
-    public static @Nullable Object execute(SkoopObject object, SkoopMethod method, Object[] arguments, Consumer<String> onError) {
+    public static @Nullable Object execute(@Nullable SkoopObject object, SkoopMethod method, Object[] arguments, Consumer<String> onError) {
         int[] depth = DEPTH.get();
 
         if (depth[0] >= MAX_CALL_DEPTH) {
             onError.accept("Skoop method calls nested more than " + MAX_CALL_DEPTH + " deep at '"
-                    + object.getClassName() + "." + method.getName()
+                    + (object == null ? "" : object.getClassName() + ".") + method.getName()
                     + "'. This is almost always unterminated recursion.");
             return null;
         }

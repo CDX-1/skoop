@@ -22,11 +22,12 @@ public abstract class SkoopInvocationEvent extends Event {
 
     private static final HandlerList HANDLERS = new HandlerList();
 
-    private final SkoopObject object;
+    /** Null while running a static method, which has no instance to act on. */
+    private final @Nullable SkoopObject object;
     private final SkoopExecutable executable;
     private final Object[] arguments;
 
-    protected SkoopInvocationEvent(SkoopObject object, SkoopExecutable executable, Object[] arguments) {
+    protected SkoopInvocationEvent(@Nullable SkoopObject object, SkoopExecutable executable, Object[] arguments) {
         this.object = object;
         this.executable = executable;
         this.arguments = arguments;

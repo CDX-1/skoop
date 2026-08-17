@@ -2,12 +2,15 @@ package rip.cdx.skoop;
 
 import com.github.shanebeee.skr.Registration;
 import rip.cdx.skoop.elements.effects.EffCallMethod;
+import rip.cdx.skoop.elements.effects.EffCallStaticMethod;
 import rip.cdx.skoop.elements.effects.EffReturnMethod;
 import rip.cdx.skoop.elements.expressions.ExprCallMethod;
+import rip.cdx.skoop.elements.expressions.ExprCallStaticMethod;
 import rip.cdx.skoop.elements.expressions.ExprConstructorArgument;
 import rip.cdx.skoop.elements.expressions.ExprField;
 import rip.cdx.skoop.elements.expressions.ExprMethodArgument;
 import rip.cdx.skoop.elements.expressions.ExprNew;
+import rip.cdx.skoop.elements.expressions.ExprStaticField;
 import rip.cdx.skoop.elements.expressions.ExprThis;
 import rip.cdx.skoop.elements.structures.StructClass;
 import rip.cdx.skoop.elements.types.SkoopTypes;
@@ -31,12 +34,15 @@ public final class SkoopLoader {
         ExprThis.register(reg);
         ExprNew.register(reg);
         ExprField.register(reg);
+        ExprStaticField.register(reg);
         ExprConstructorArgument.register(reg);
         ExprMethodArgument.register(reg);
         ExprCallMethod.register(reg);
+        ExprCallStaticMethod.register(reg);
 
         // Effects
         EffCallMethod.register(reg);
+        EffCallStaticMethod.register(reg);
         EffReturnMethod.register(reg);
 
         reg.finalizeRegistration();

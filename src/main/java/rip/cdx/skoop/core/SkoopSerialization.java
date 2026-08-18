@@ -74,7 +74,7 @@ public final class SkoopSerialization {
 
         Map<String, Object> values = object.getFields();
 
-        for (SkoopField field : skoopClass.getFields().values()) {
+        for (SkoopField field : skoopClass.getAllFields().values()) {
             Object value = values.get(key(field.getName()));
             if (value == null) {
                 continue;

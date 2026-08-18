@@ -27,10 +27,17 @@ public final class Skoop extends JavaPlugin {
         SkoopLoader.register(new Registration("skoop", true));
     }
 
+    /**
+     * Deliberately leaves the instance and the class registry standing.
+     * <p>
+     * Skript writes its variables to disk <em>after</em> plugins are disabled, and serializing a
+     * Skoop object has to resolve its class — and walk its superclasses — to know which fields to
+     * write. Tearing that down here would either fail the save outright or, worse, quietly write
+     * the object back without its inherited fields. Nothing outlives the JVM either way: the
+     * registry is per-instance, and a re-enable rebuilds it from the scripts that load.
+     */
     @Override
     public void onDisable() {
-        classRegistry.clear();
-        instance = null;
     }
 
     private boolean canHookIntoSkript() {

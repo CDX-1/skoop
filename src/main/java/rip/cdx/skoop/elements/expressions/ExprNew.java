@@ -46,6 +46,12 @@ public class ExprNew extends SimpleExpression<SkoopObject> implements SkoopTypeP
             return false;
         }
 
+        if (skoopClass.isAbstract()) {
+            Skript.error("Class '" + skoopClass.getName() + "' is abstract and cannot be instantiated. "
+                    + "Create an instance of a class that extends it instead.");
+            return false;
+        }
+
         this.type = SkoopType.ofSkoopClass(skoopClass.getName(), false);
 
         if (matchedPattern == 1) {
@@ -65,6 +71,12 @@ public class ExprNew extends SimpleExpression<SkoopObject> implements SkoopTypeP
         SkoopClass skoopClass = Skoop.getInstance().getClassRegistry().get(className);
         if (skoopClass == null) {
             error("There is no Skoop class named '" + className + "'.");
+            return null;
+        }
+
+        // Re-checked at runtime: a reload may have turned the class abstract since parsing.
+        if (skoopClass.isAbstract()) {
+            error("Class '" + skoopClass.getName() + "' is abstract and cannot be instantiated.");
             return null;
         }
 

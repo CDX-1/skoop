@@ -105,6 +105,18 @@ public class SkoopObject {
         return pendingClassName == null ? "?" : pendingClassName;
     }
 
+    /**
+     * @return whether this instance's class is {@code className} or descends from it
+     */
+    public boolean isInstanceOf(String className) {
+        if (getClassName().equalsIgnoreCase(className)) {
+            return true;
+        }
+
+        SkoopClass resolved = findSkoopClass();
+        return resolved != null && resolved.isSubclassOf(className);
+    }
+
     public UUID getUniqueId() {
         if (uniqueId == null) {
             uniqueId = UUID.randomUUID();
@@ -131,7 +143,7 @@ public class SkoopObject {
             return;
         }
 
-        for (SkoopField field : resolved.getFields().values()) {
+        for (SkoopField field : resolved.getAllFields().values()) {
             Object value = stored.get(key(field.getName()));
             if (value == null) {
                 continue;
@@ -173,7 +185,7 @@ public class SkoopObject {
         SkoopClass resolved = getSkoopClass();
         SkoopFieldDefaultEvent event = new SkoopFieldDefaultEvent(resolved.getName());
 
-        for (SkoopField field : resolved.getFields().values()) {
+        for (SkoopField field : resolved.getAllFields().values()) {
             initializeDefault(field, event);
         }
     }

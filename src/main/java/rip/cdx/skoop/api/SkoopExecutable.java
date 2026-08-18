@@ -2,6 +2,7 @@ package rip.cdx.skoop.api;
 
 import ch.njol.skript.lang.Trigger;
 import lombok.Getter;
+import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -9,14 +10,16 @@ import java.util.stream.Collectors;
 /**
  * Shared behaviour of the invokable members of a {@link SkoopClass}:
  * a parameter list plus the {@link Trigger} holding the body.
+ * <p>
+ * The trigger is null for an abstract method, which declares a signature and no body.
  */
 @Getter
 public abstract class SkoopExecutable {
 
     private final List<SkoopParameter> parameters;
-    private final Trigger trigger;
+    private final @Nullable Trigger trigger;
 
-    protected SkoopExecutable(List<SkoopParameter> parameters, Trigger trigger) {
+    protected SkoopExecutable(List<SkoopParameter> parameters, @Nullable Trigger trigger) {
         this.parameters = List.copyOf(parameters);
         this.trigger = trigger;
     }

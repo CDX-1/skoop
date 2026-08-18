@@ -61,6 +61,13 @@ public class SkoopMemberTable {
         return methods.getOrDefault(key(name), List.of());
     }
 
+    /**
+     * @return every declared method, keyed by lower-cased name
+     */
+    public Map<String, List<SkoopMethod>> getAllMethods() {
+        return methods;
+    }
+
     public boolean hasMethod(SkoopMethod method) {
         return getMethods(method.getName()).stream()
                 .anyMatch(existing -> existing.hasSameSignature(method));

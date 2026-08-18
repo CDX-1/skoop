@@ -1,5 +1,6 @@
 package rip.cdx.skoop.core;
 
+import ch.njol.skript.lang.Trigger;
 import org.jetbrains.annotations.Nullable;
 import rip.cdx.skoop.api.SkoopClass;
 import rip.cdx.skoop.api.SkoopMethod;
@@ -55,6 +56,16 @@ public final class SkoopMethodExecutor {
      * @return the value returned by the method, or null if it is void or the depth limit was hit
      */
     public static @Nullable Object execute(@Nullable SkoopObject object, SkoopMethod method, Object[] arguments, Consumer<String> onError) {
+        Trigger body = method.getTrigger();
+
+        // Only reachable if the class that implemented this method stopped being loaded: a
+        // concrete class cannot finish loading while an abstract method is unimplemented.
+        if (body == null) {
+            onError.accept("Method '" + method.getName() + "' is abstract in class '"
+                    + method.getDeclaringClassName() + "' and has no implementation to run.");
+            return null;
+        }
+
         int[] depth = DEPTH.get();
 
         if (depth[0] >= MAX_CALL_DEPTH) {
@@ -68,7 +79,7 @@ public final class SkoopMethodExecutor {
 
         depth[0]++;
         try {
-            method.getTrigger().execute(event);
+            body.execute(event);
         } finally {
             depth[0]--;
         }

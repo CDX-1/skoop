@@ -107,9 +107,9 @@ public class SkoopType {
         }
 
         if (skoopClassName != null) {
-            // Compared by name so that instances created before a reload still satisfy the type.
-            return value instanceof SkoopObject object
-                    && object.getClassName().equalsIgnoreCase(skoopClassName);
+            // Compared by name so that instances created before a reload still satisfy the type,
+            // and widened to subclasses so a Dog can be passed wherever an Animal is declared.
+            return value instanceof SkoopObject object && object.isInstanceOf(skoopClassName);
         }
 
         if (skriptType != null) {
